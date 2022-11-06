@@ -1,18 +1,42 @@
-from imutils.video import VideoStream
-import imagezmq
 import socket
-import time
+import cv2
+import pickle
+import struct
+import imutils
 
-server_ip = ""
+client_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+host_ip = '127.0.0.1' #Replace with server IP
+port = 5555 
 
-sender = imagezmq.ImageSender(connect_to="tcp://{}:5555".format(server_ip))
+client_socket.connect((host_ip,port)) 
 
-hostname = socket.gethostname()
+# b: bytes 
+data = b""
+# Q: unsigned long integer
+payload_size = struct.calcsize("Q")
 
-vs = VideoStream(src=0).start()
-
-time.sleep(2.0)
- 
 while True:
-	frame = vs.read()
-	sender.send_image(hostname, frame)
+
+    #Send payload
+    while len(data) < payload_size:
+        packet = client_socket.recv(4*1024)
+        if not packet: break
+        data+=packet
+
+    packed_msg_size = data[:payload_size]
+    data = data[payload_size:]
+    msg_size = struct.unpack("Q",packed_msg_size)[0]
+
+    #Send message
+    while len(data) < msg_size:
+        data += client_socket.recv(4*1024)
+
+    frame_data = data[:msg_size]
+    data = data[msg_size:]
+    frame = pickle.loads(frame_data)
+
+    #Show received image
+    cv2.imshow("Receiving",frame)
+    cv2.waitKey(1) 
+
+client_socket.close()
